@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>QR & Barcode Scanner</title>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --primary:      #2563eb;
+      --primary-dk:   #1d4ed8;
+      --success:      #16a34a;
+      --error:        #dc2626;
+      --warning:      #f59e0b;
+      --bg:           #f1f5f9;
+      --surface:      #ffffff;
+      --text:         #1e293b;
+      --muted:        #64748b;
+      --border:       #e2e8f0;
+      --radius:       14px;
+      --safe-top:     env(safe-area-inset-top);
+      --safe-bot:     env(safe-area-inset-bottom);
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100dvh;
+    }
+
+    /* ── HEADER ── */
+    .header {
+      background: var(--primary);
+      color: #fff;
+      padding: 14px 18px;
+      padding-top: calc(14px + var(--safe-top));
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky; top: 0; z-index: 50;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+    }
+    .header-left h1  { font-size: 17px; font-weight: 700; }
+    .header-left sub { font-size: 11px; opacity: .75; display: block; margin-top: 1px; }
+
+    .session-pill {
+      background: rgba(255,255,255,.2);
+      border-radius: 20px;
+      padding: 6px 12px;
+      font-size: 13px;
+      font-weight: 700;
+      display: flex; align-items: center; gap: 6px;
+      white-space: nowrap;
+    }
+    .session-pill .dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: #4ade80;
+      animation: blink 2s infinite;
+    }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+    /* ── CONTAINER ── */
+    .container {
+      padding: 16px;
+      padding-bottom: calc(24px + var(--safe-bot));
+      max-width: 480px;
+      margin: 0 auto;
+    }
+
+    /* ── CARD ── */
+    .card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      box-shadow: 0 1px 6px rgba(0,0,0,.07);
+      margin-bottom: 14px;
+      overflow: hidden;
+    }
+    .card-header {
+      padding: 13px 16px 10px;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .6px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    /* ── FORM FIELDS ── */
+    .field {
+      padding: 0 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .field:last-child { border-bottom: none; }
+
+    .field-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+      letter-spacing: .4px;
+      padding-top: 12px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .required-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--error);
+      display: inline-block;
+    }
+
+    .field-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding-bottom: 10px;
+    }
+
+    .field-input {
+      flex: 1;
+      border: none;
+      outline: none;
+      font-size: 16px;  /* iOS won't zoom if ≥16px */
+      font-weight: 500;
+      color: var(--text);
+      background: transparent;
+      padding: 6px 0;
+      min-width: 0;
+    }
+    .field-input::placeholder { color: #b0bec5; font-weight: 400; }
+
+    /* custom datalist arrow */
+    .select-wrap { flex: 1; position: relative; display: flex; align-items: center; }
+    .select-wrap .field-input { width: 100%; }
+    .select-wrap::after {
+      content: '▾';
+      color: var(--muted);
+      font-size: 14px;
+      pointer-events: none;
+      flex-shrink: 0;
+    }
+
+    /* camera button */
+    .btn-cam {
+      width: 40px; height: 40px;
+      border: none;
+      border-radius: 10px;
+      background: #eff6ff;
+      color: var(--primary);
+      font-size: 20px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      flex-shrink: 0;
+      -webkit-tap-highlight-color: transparent;
+      transition: background .15s;
+    }
+    .btn-cam:active { background: #dbeafe; }
+
+    /* validation highlight */
+    .field.invalid .field-input { color: var(--error); }
+    .field.invalid .field-label { color: var(--error); }
+
+    /* ── SUBMIT ── */
+    .btn-submit {
+      width: 100%;
+      padding: 16px;
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      -webkit-tap-highlight-color: transparent;
+      transition: background .15s;
+    }
+    .btn-submit:active { background: var(--primary-dk); }
+    .btn-submit:disabled { background: #94a3b8; cursor: default; }
+    .btn-submit .spinner {
+      width: 18px; height: 18px;
+      border: 2.5px solid rgba(255,255,255,.4);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      display: none;
+    }
+    .btn-submit.loading .spinner { display: block; }
+    .btn-submit.loading .btn-label { opacity: .7; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── HISTORY ── */
+    .history-empty {
+      text-align: center; padding: 28px 20px;
+      color: var(--muted); font-size: 14px;
+    }
+    .history-empty .ico { font-size: 36px; margin-bottom: 8px; }
+
+    .log-item {
+      display: flex; align-items: center; gap: 12px;
+      padding: 11px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .log-item:last-child { border-bottom: none; }
+    .log-ico {
+      width: 36px; height: 36px; border-radius: 9px;
+      background: #eff6ff;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px; flex-shrink: 0;
+    }
+    .log-info { flex: 1; min-width: 0; }
+    .log-main { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .log-sub  { font-size: 12px; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .log-status { font-size: 18px; flex-shrink: 0; }
+
+    /* ── CAMERA MODAL ── */
+    .cam-modal {
+      position: fixed; inset: 0; z-index: 200;
+      background: #000;
+      display: none;
+      flex-direction: column;
+    }
+    .cam-modal.open { display: flex; }
+
+    .cam-topbar {
+      padding: 14px 16px;
+      padding-top: calc(14px + var(--safe-top));
+      display: flex; align-items: center; justify-content: space-between;
+      background: rgba(0,0,0,.6);
+      position: relative; z-index: 10;
+    }
+    .cam-title { color: #fff; font-size: 15px; font-weight: 700; }
+    .cam-field-badge {
+      background: var(--primary);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 20px;
+    }
+    .btn-cam-close {
+      background: rgba(255,255,255,.15);
+      border: none; border-radius: 20px;
+      color: #fff; font-size: 14px; font-weight: 600;
+      padding: 7px 14px; cursor: pointer;
+    }
+
+    .cam-viewport {
+      position: relative;
+      flex: 1;
+      overflow: hidden;
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    /* html5-qrcode overrides */
+    #reader {
+      width: 100% !important;
+      height: 100% !important;
+      border: none !important;
+    }
+    #reader video {
+      width: 100% !important;
+      height: 100% !important;
+      object-fit: cover !important;
+    }
+    #reader__scan_region { border: none !important; }
+    #reader__dashboard   { display: none !important; }
+    #reader img          { display: none !important; }
+
+    /* Scan frame overlay */
+    .scan-frame {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -60%);
+      width: 240px; height: 180px;
+      pointer-events: none;
+      z-index: 5;
+    }
+    .scan-frame::before, .scan-frame::after,
+    .scan-frame .c2::before, .scan-frame .c2::after {
+      content: '';
+      position: absolute;
+      width: 28px; height: 28px;
+      border-color: #fff;
+      border-style: solid;
+    }
+    .scan-frame::before       { top:0;    left:0;  border-width: 3px 0 0 3px; border-radius: 4px 0 0 0; }
+    .scan-frame::after        { top:0;    right:0; border-width: 3px 3px 0 0; border-radius: 0 4px 0 0; }
+    .scan-frame .c2::before   { bottom:0; left:0;  border-width: 0 0 3px 3px; border-radius: 0 0 0 4px; }
+    .scan-frame .c2::after    { bottom:0; right:0; border-width: 0 3px 3px 0; border-radius: 0 0 4px 0; }
+    .scan-line {
+      position: absolute; left: 6px; right: 6px; height: 2px;
+      background: linear-gradient(90deg, transparent, var(--primary), transparent);
+      top: 0;
+      animation: scan-move 2s ease-in-out infinite;
+    }
+    @keyframes scan-move {
+      0%   { top: 0;    opacity: 1; }
+      45%  { top: calc(100% - 2px); opacity: 1; }
+      50%  { opacity: 0; }
+      55%  { top: 0; opacity: 0; }
+      60%  { opacity: 1; }
+      100% { top: calc(100% - 2px); opacity: 1; }
+    }
+
+    /* Counter pill (top-left of viewport) */
+    .cam-counter {
+      position: absolute; top: 14px; left: 14px;
+      background: rgba(0,0,0,.6);
+      color: #fff; border-radius: 20px;
+      padding: 5px 12px;
+      font-size: 13px; font-weight: 700;
+      z-index: 10;
+      display: flex; align-items: center; gap: 6px;
+      backdrop-filter: blur(4px);
+    }
+    .cam-counter .ic { font-size: 14px; }
+
+    /* Flash toggle (top-right) */
+    .btn-flash {
+      position: absolute; top: 14px; right: 14px;
+      background: rgba(0,0,0,.5);
+      border: none; border-radius: 20px;
+      color: #fff; font-size: 13px; font-weight: 600;
+      padding: 6px 12px;
+      cursor: pointer; z-index: 10;
+      backdrop-filter: blur(4px);
+    }
+
+    /* DUPLICATE BANNER */
+    .dup-banner {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(220, 38, 38, .92);
+      color: #fff;
+      font-size: 28px; font-weight: 900;
+      letter-spacing: 2px;
+      padding: 16px 32px;
+      border-radius: 16px;
+      z-index: 20;
+      display: none;
+      text-align: center;
+      backdrop-filter: blur(6px);
+      box-shadow: 0 8px 32px rgba(0,0,0,.4);
+      pointer-events: none;
+    }
+    .dup-banner.show { display: block; animation: bump .25s ease; }
+    .dup-banner small { display: block; font-size: 13px; font-weight: 500; margin-top: 4px; letter-spacing: 0; }
+    @keyframes bump {
+      0%   { transform: translate(-50%,-50%) scale(.7); opacity: 0; }
+      70%  { transform: translate(-50%,-50%) scale(1.05); }
+      100% { transform: translate(-50%,-50%) scale(1); opacity: 1; }
+    }
+
+    /* SUCCESS flash */
+    .success-flash {
+      position: absolute; inset: 0; z-index: 15;
+      background: rgba(34,197,94,.25);
+      pointer-events: none;
+      display: none;
+    }
+    .success-flash.show { display: block; animation: flash-out .4s ease forwards; }
+    @keyframes flash-out { from{opacity:1} to{opacity:0} }
+
+    /* Hint text */
+    .cam-hint {
+      position: absolute; bottom: 24px; left: 0; right: 0;
+      text-align: center; color: rgba(255,255,255,.75);
+      font-size: 13px; z-index: 10;
+    }
+
+    /* ── STATUS SNACK ── */
+    .snack {
+      position: fixed; bottom: calc(20px + var(--safe-bot)); left: 50%;
+      transform: translateX(-50%);
+      background: #1e293b; color: #fff;
+      padding: 10px 18px; border-radius: 20px;
+      font-size: 14px; font-weight: 500;
+      z-index: 300; opacity: 0;
+      transition: opacity .25s;
+      white-space: nowrap; pointer-events: none;
+      max-width: calc(100vw - 32px);
+    }
+    .snack.show { opacity: 1; }
+    .snack.ok   { background: var(--success); }
+    .snack.err  { background: var(--error); }
+    .snack.warn { background: var(--warning); color: #000; }
+  </style>
+</head>
+<body>
+
+<!-- ── HEADER ── -->
+<div class="header">
+  <div class="header-left">
+    <h1>📦 QR &amp; Barcode Scanner</h1>
+    <sub>Tự động ghi vào Google Sheets</sub>
+  </div>
+  <div class="session-pill">
+    <span class="dot"></span>
+    <span id="hdrCount">0</span> mã
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- ── FORM ── -->
+  <div class="card" id="formCard">
+    <div class="card-header">Thông tin phiên quét</div>
+
+    <!-- Người quét (required) -->
+    <div class="field" id="fieldNguoiQuet">
+      <div class="field-label">
+        <span class="required-dot"></span>&nbsp;NGƯỜI QUÉT
+      </div>
+      <div class="field-row">
+        <div class="select-wrap">
+          <input class="field-input" id="nguoiQuet"
+            list="userList"
+            placeholder="Chọn hoặc nhập tên…"
+            autocomplete="off" autocorrect="off" spellcheck="false" />
+          <datalist id="userList"></datalist>
+        </div>
+      </div>
+    </div>
+
+    <!-- Serial Máy -->
+    <div class="field">
+      <div class="field-label">SERIAL MÁY</div>
+      <div class="field-row">
+        <input class="field-input" id="serialMay"
+          placeholder="Nhập hoặc quét bằng camera…"
+          autocomplete="off" autocorrect="off" spellcheck="false" />
+        <button class="btn-cam" onclick="openCamera('serialMay')" title="Quét bằng camera">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+            <circle cx="12" cy="13" r="4"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Serial SIM -->
+    <div class="field">
+      <div class="field-label">SERIAL SIM</div>
+      <div class="field-row">
+        <input class="field-input" id="serialSim"
+          placeholder="Nhập hoặc quét bằng camera…"
+          autocomplete="off" autocorrect="off" spellcheck="false" />
+        <button class="btn-cam" onclick="openCamera('serialSim')" title="Quét bằng camera">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+            <circle cx="12" cy="13" r="4"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Người nhận (optional) -->
+    <div class="field">
+      <div class="field-label">NGƯỜI NHẬN <span style="color:var(--muted);font-weight:400;font-size:10px">(tùy chọn)</span></div>
+      <div class="field-row">
+        <input class="field-input" id="nguoiNhan"
+          placeholder="Để trống nếu không có…"
+          autocomplete="off" autocorrect="off" spellcheck="false" />
+      </div>
+    </div>
+  </div>
+
+  <!-- Submit -->
+  <button class="btn-submit" id="btnSubmit" onclick="submitForm()">
+    <div class="spinner"></div>
+    <span class="btn-label">📤 Gửi lên Google Sheets</span>
+  </button>
+
+  <!-- ── HISTORY ── -->
+  <div class="card" id="historyCard">
+    <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
+      <span>Lịch sử phiên</span>
+      <button onclick="clearHistory()" style="background:none;border:none;color:var(--error);font-size:12px;font-weight:600;cursor:pointer;padding:0">Xóa</button>
+    </div>
+    <div id="historyList">
+      <div class="history-empty">
+        <div class="ico">📋</div>
+        Chưa có bản ghi nào
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── CAMERA MODAL ── -->
+<div class="cam-modal" id="camModal">
+
+  <!-- Top bar -->
+  <div class="cam-topbar">
+    <div>
+      <div class="cam-title">📷 Đang quét</div>
+    </div>
+    <div id="camFieldBadge" class="cam-field-badge">Serial Máy</div>
+    <button class="btn-cam-close" onclick="closeCamera()">✕ Đóng</button>
+  </div>
+
+  <!-- Viewport -->
+  <div class="cam-viewport">
+    <div id="reader"></div>
+
+    <!-- Scan frame -->
+    <div class="scan-frame" id="scanFrame">
+      <div class="c2"></div>
+      <div class="scan-line"></div>
+    </div>
+
+    <!-- Session counter -->
+    <div class="cam-counter">
+      <span class="ic">✅</span>
+      <span id="camCount">0</span> đã quét
+    </div>
+
+    <!-- Flash button -->
+    <button class="btn-flash" id="btnFlash" onclick="toggleFlash()">🔦 Flash</button>
+
+    <!-- Duplicate banner -->
+    <div class="dup-banner" id="dupBanner">
+      ⚠️ TRÙNG!
+      <small id="dupDetail">Mã này đã được quét</small>
+    </div>
+
+    <!-- Success flash -->
+    <div class="success-flash" id="successFlash"></div>
+
+    <!-- Hint -->
+    <div class="cam-hint" id="camHint">Đưa mã vào khung để quét</div>
+  </div>
+
+</div>
+
+<!-- Snackbar -->
+<div class="snack" id="snack"></div>
+
+<!-- ═══════════════════════════════════════════════ -->
+<script>
+// ── CONFIG ─────────────────────────────────────────
+const APPS_SCRIPT_URL = localStorage.getItem('scriptUrl') || 'https://script.google.com/macros/library/d/1bW4QOi_perfxiqYoq2bGYTthgJ8XM0Jlj1aNZ3z0E2wE3_nQmZW-jgRA/1';
+
+// ── STATE ──────────────────────────────────────────
+let scanner      = null;
+let isScanning   = false;
+let activeField  = null;   // 'serialMay' | 'serialSim'
+let flashOn      = false;
+let sessionCount = 0;
+let sessionLog   = [];     // { serialMay, serialSim, nguoiNhan, nguoiQuet, timestamp, ok }
+let scannedCodes = new Set(); // all codes scanned this session (for dup detection)
+
+// ── BOOT ───────────────────────────────────────────
+window.addEventListener('load', () => {
+  if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL === 'YOUR_APPS_SCRIPT_URL_HERE') {
+    showSnack('⚙️ Chưa cấu hình Apps Script URL – hãy chỉnh file index.html', 'warn', 6000);
+  } else {
+    loadUserList();
+  }
+});
+
+// ── LOAD USER LIST ─────────────────────────────────
+async function loadUserList() {
+  try {
+    const res  = await fetch(`${APPS_SCRIPT_URL}?action=getUsers`);
+    const json = await res.json();
+    const dl   = document.getElementById('userList');
+    (json.users || []).forEach(name => {
+      const opt = document.createElement('option');
+      opt.value = name;
+      dl.appendChild(opt);
+    });
+  } catch (e) {
+    console.warn('Không tải được danh sách người quét:', e);
+  }
+}
+
+// ── CAMERA ─────────────────────────────────────────
+const FIELD_LABELS = {
+  serialMay: 'Serial Máy',
+  serialSim: 'Serial SIM',
+};
+
+function openCamera(fieldId) {
+  activeField = fieldId;
+  document.getElementById('camFieldBadge').textContent = FIELD_LABELS[fieldId] || fieldId;
+  document.getElementById('camModal').classList.add('open');
+  updateCamCounter();
+
+  const config = {
+    fps: 15,
+    qrbox: { width: 240, height: 180 },
+    aspectRatio: 1.78,
+    supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA],
+    formatsToSupport: [
+      Html5QrcodeSupportedFormats.QR_CODE,
+      Html5QrcodeSupportedFormats.EAN_13,
+      Html5QrcodeSupportedFormats.EAN_8,
+      Html5QrcodeSupportedFormats.CODE_128,
+      Html5QrcodeSupportedFormats.CODE_39,
+      Html5QrcodeSupportedFormats.UPC_A,
+      Html5QrcodeSupportedFormats.UPC_E,
+      Html5QrcodeSupportedFormats.ITF,
+      Html5QrcodeSupportedFormats.DATA_MATRIX,
+      Html5QrcodeSupportedFormats.PDF_417,
+      Html5QrcodeSupportedFormats.AZTEC,
+    ],
+  };
+
+  scanner = new Html5Qrcode('reader');
+  scanner.start(
+    { facingMode: 'environment' },
+    config,
+    onScanSuccess,
+    () => {} // silent failure
+  ).then(() => {
+    isScanning = true;
+    flashOn = false;
+    document.getElementById('btnFlash').textContent = '🔦 Flash';
+  }).catch(err => {
+    showSnack('❌ Lỗi camera: ' + err.message, 'err');
+    closeCamera();
+  });
+}
+
+function closeCamera() {
+  if (scanner && isScanning) {
+    scanner.stop().catch(() => {}).finally(() => {
+      scanner = null;
+      isScanning = false;
+    });
+  }
+  document.getElementById('camModal').classList.remove('open');
+  hideDupBanner();
+}
+
+function toggleFlash() {
+  if (!scanner) return;
+  flashOn = !flashOn;
+  scanner.applyVideoConstraints({ advanced: [{ torch: flashOn }] })
+    .catch(() => showSnack('Thiết bị không hỗ trợ đèn flash', 'warn'));
+  document.getElementById('btnFlash').textContent = flashOn ? '🔦 Tắt' : '🔦 Flash';
+}
+
+// ── SCAN CALLBACK ───────────────────────────────────
+let lastCode = '';
+let lastCodeTime = 0;
+
+function onScanSuccess(decodedText) {
+  const now = Date.now();
+  // 1.5s debounce cho cùng mã
+  if (decodedText === lastCode && now - lastCodeTime < 1500) return;
+  lastCode = decodedText;
+  lastCodeTime = now;
+
+  // Kiểm tra trùng trong phiên
+  if (scannedCodes.has(decodedText)) {
+    showDupBanner(decodedText);
+    playBeep(false); // error tone
+    if (navigator.vibrate) navigator.vibrate([80, 60, 80]);
+    return;
+  }
+
+  // Không trùng → điền vào field
+  document.getElementById(activeField).value = decodedText;
+  scannedCodes.add(decodedText);
+  sessionCount++;
+  updateCamCounter();
+  showSuccessFlash();
+  playBeep(true);
+  if (navigator.vibrate) navigator.vibrate(60);
+
+  // Đóng camera sau 600ms để user thấy flash
+  setTimeout(closeCamera, 600);
+}
+
+// ── DUPLICATE BANNER ────────────────────────────────
+let dupTimer;
+function showDupBanner(code) {
+  const banner = document.getElementById('dupBanner');
+  const detail = document.getElementById('dupDetail');
+  detail.textContent = `"${code.length > 20 ? code.slice(0,20)+'…' : code}"`;
+  banner.classList.add('show');
+  clearTimeout(dupTimer);
+  dupTimer = setTimeout(hideDupBanner, 2500);
+}
+function hideDupBanner() {
+  document.getElementById('dupBanner').classList.remove('show');
+}
+
+function showSuccessFlash() {
+  const el = document.getElementById('successFlash');
+  el.classList.remove('show');
+  void el.offsetWidth; // reflow
+  el.classList.add('show');
+}
+
+function updateCamCounter() {
+  document.getElementById('camCount').textContent = sessionCount;
+  document.getElementById('hdrCount').textContent = sessionCount;
+}
+
+// ── SUBMIT ─────────────────────────────────────────
+async function submitForm() {
+  const nguoiQuet = document.getElementById('nguoiQuet').value.trim();
+  const serialMay = document.getElementById('serialMay').value.trim();
+  const serialSim = document.getElementById('serialSim').value.trim();
+  const nguoiNhan = document.getElementById('nguoiNhan').value.trim();
+
+  // Validate required
+  if (!nguoiQuet) {
+    document.getElementById('fieldNguoiQuet').classList.add('invalid');
+    document.getElementById('nguoiQuet').focus();
+    showSnack('⚠️ Vui lòng nhập Người quét', 'warn');
+    return;
+  }
+  document.getElementById('fieldNguoiQuet').classList.remove('invalid');
+
+  if (!serialMay && !serialSim) {
+    showSnack('⚠️ Vui lòng nhập ít nhất Serial Máy hoặc Serial SIM', 'warn');
+    return;
+  }
+
+  // Loading state
+  const btn = document.getElementById('btnSubmit');
+  btn.disabled = true;
+  btn.classList.add('loading');
+
+  const payload = {
+    nguoiQuet,
+    serialMay,
+    serialSim,
+    nguoiNhan,
+    timestamp: new Date().toISOString(),
+  };
+
+  let ok = false;
+  try {
+    await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    ok = true;
+  } catch (e) {
+    ok = false;
+  }
+
+  btn.disabled = false;
+  btn.classList.remove('loading');
+
+  if (ok) {
+    showSnack('✅ Đã ghi vào Google Sheets!', 'ok');
+    addToHistory(payload, true);
+    clearForm();
+  } else {
+    showSnack('❌ Lỗi gửi dữ liệu – kiểm tra URL', 'err');
+    addToHistory(payload, false);
+  }
+}
+
+// ── FORM HELPERS ────────────────────────────────────
+function clearForm() {
+  document.getElementById('serialMay').value = '';
+  document.getElementById('serialSim').value = '';
+  document.getElementById('nguoiNhan').value = '';
+  // Giữ nguyên Người quét để tiện quét nhiều lần
+}
+
+// ── HISTORY ────────────────────────────────────────
+function addToHistory(data, ok) {
+  sessionLog.unshift({ ...data, ok });
+  if (sessionLog.length > 30) sessionLog.pop();
+  renderHistory();
+}
+
+function renderHistory() {
+  const list = document.getElementById('historyList');
+  if (sessionLog.length === 0) {
+    list.innerHTML = '<div class="history-empty"><div class="ico">📋</div>Chưa có bản ghi nào</div>';
+    return;
+  }
+  list.innerHTML = sessionLog.map(item => {
+    const ts   = new Date(item.timestamp);
+    const time = ts.toLocaleTimeString('vi-VN', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+    const main = [item.serialMay, item.serialSim].filter(Boolean).join(' · ') || '(không có serial)';
+    const sub  = `${item.nguoiQuet}${item.nguoiNhan ? ' → ' + item.nguoiNhan : ''} · ${time}`;
+    return `
+      <div class="log-item">
+        <div class="log-ico">📦</div>
+        <div class="log-info">
+          <div class="log-main">${esc(main)}</div>
+          <div class="log-sub">${esc(sub)}</div>
+        </div>
+        <div class="log-status">${item.ok ? '✅' : '❌'}</div>
+      </div>`;
+  }).join('');
+}
+
+function clearHistory() {
+  sessionLog = [];
+  sessionCount = 0;
+  scannedCodes.clear();
+  lastCode = '';
+  lastCodeTime = 0;
+  updateCamCounter();
+  renderHistory();
+  showSnack('Đã xóa lịch sử phiên');
+}
+
+// ── SOUND ───────────────────────────────────────────
+function playBeep(success) {
+  try {
+    const ctx  = new (window.AudioContext || window.webkitAudioContext)();
+    const osc  = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    if (success) {
+      osc.type = 'sine';
+      osc.frequency.value = 1400;
+      gain.gain.setValueAtTime(0.25, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+      osc.start(); osc.stop(ctx.currentTime + 0.12);
+    } else {
+      osc.type = 'sawtooth';
+      osc.frequency.value = 300;
+      gain.gain.setValueAtTime(0.2, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+      osc.start(); osc.stop(ctx.currentTime + 0.3);
+    }
+  } catch(e) {}
+}
+
+// ── SNACKBAR ────────────────────────────────────────
+let snackTimer;
+function showSnack(msg, type = '', duration = 3000) {
+  const el = document.getElementById('snack');
+  el.textContent = msg;
+  el.className = 'snack show' + (type ? ' ' + type : '');
+  clearTimeout(snackTimer);
+  snackTimer = setTimeout(() => el.classList.remove('show'), duration);
+}
+
+// ── UTIL ────────────────────────────────────────────
+function esc(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>

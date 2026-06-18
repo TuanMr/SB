@@ -1,0 +1,188 @@
+/**
+ * QR/Barcode Scanner – Google Apps Script v2
+ *
+ * SHEET CẦN TẠO:
+ *   - Sheet "Data"      : nơi ghi dữ liệu quét
+ *   - Sheet "DanhSach"  : cột A = danh sách Người quét (từ A2 trở xuống)
+ *
+ * HƯỚNG DẪN DEPLOY:
+ *   1. Extensions → Apps Script → dán code này
+ *   2. Thay SPREADSHEET_ID
+ *   3. Deploy → New deployment
+ *      Type: Web App | Execute as: Me | Who has access: Anyone
+ *   4. Copy Web App URL → dán vào index.html (biến APPS_SCRIPT_URL)
+ *
+ * Mỗi lần sửa code → phải Deploy lại (New deployment hoặc chỉnh version).
+ */
+
+// ── CẤU HÌNH ──────────────────────────────────────────────────────────────
+const SPREADSHEET_ID  = '1JHZSvCf1H_LxI_WmZyBR1FpLBuheChzTJb4zDaSJLT4';
+const DATA_SHEET      = 'Data';       // Sheet ghi dữ liệu
+const USER_LIST_SHEET = 'DanhSach';   // Sheet chứa danh sách người quét
+// ──────────────────────────────────────────────────────────────────────────
+
+// Header hàng đầu của sheet Data
+const HEADERS = [
+  'Timestamp',
+  'Người quét',
+  'Serial Máy',
+  'Serial SIM',
+  'Người nhận',
+];
+
+
+/**
+ * GET handler
+ * action=getUsers  → trả về danh sách người quét
+ * (trống)          → health check
+ */
+function doGet(e) {
+  const action = (e && e.parameter && e.parameter.action) || '';
+
+  if (action === 'getUsers') {
+    return getUserList();
+  }
+
+  // Health check – truy cập URL thẳng trên browser để test
+  return buildJson({
+    status:  'ok',
+    message: 'QR Scanner API đang chạy ✓',
+    time:    new Date().toISOString(),
+  });
+}
+
+
+/**
+ * POST handler – nhận dữ liệu từ web app và ghi vào sheet Data
+ */
+function doPost(e) {
+  try {
+    const data = JSON.parse(e.postData.contents);
+
+    const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = getOrCreateSheet(ss, DATA_SHEET);
+
+    // Tạo header nếu sheet mới (chưa có dòng nào)
+    if (sheet.getLastRow() === 0) {
+      initHeader(sheet);
+    }
+
+    const ts = data.timestamp ? new Date(data.timestamp) : new Date();
+
+    const row = sheet.appendRow([
+      ts,
+      data.nguoiQuet  || '',
+      data.serialMay  || '',
+      data.serialSim  || '',
+      data.nguoiNhan  || '',
+    ]);
+
+    // Format cột Timestamp
+    const lastRow = sheet.getLastRow();
+    sheet.getRange(lastRow, 1).setNumberFormat('dd/MM/yyyy HH:mm:ss');
+
+    return buildJson({ status: 'success', row: lastRow });
+
+  } catch (err) {
+    Logger.log('doPost error: ' + err.toString());
+    return buildJson({ status: 'error', message: err.toString() });
+  }
+}
+
+
+// ── HELPERS ───────────────────────────────────────────────────────────────
+
+/**
+ * Lấy danh sách người quét từ sheet DanhSach (cột A, từ A2)
+ */
+function getUserList() {
+  try {
+    const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = ss.getSheetByName(USER_LIST_SHEET);
+
+    if (!sheet || sheet.getLastRow() < 2) {
+      return buildJson({ users: [] });
+    }
+
+    const values = sheet
+      .getRange(2, 1, sheet.getLastRow() - 1, 1)
+      .getValues();
+
+    const users = values
+      .map(row => String(row[0]).trim())
+      .filter(v => v !== '');
+
+    return buildJson({ users });
+
+  } catch (err) {
+    Logger.log('getUserList error: ' + err.toString());
+    return buildJson({ users: [], error: err.toString() });
+  }
+}
+
+/**
+ * Lấy sheet theo tên, tạo mới nếu chưa có
+ */
+function getOrCreateSheet(ss, name) {
+  return ss.getSheetByName(name) || ss.insertSheet(name);
+}
+
+/**
+ * Tạo và format hàng header
+ */
+function initHeader(sheet) {
+  sheet.appendRow(HEADERS);
+  const range = sheet.getRange(1, 1, 1, HEADERS.length);
+  range.setFontWeight('bold');
+  range.setBackground('#2563eb');
+  range.setFontColor('#ffffff');
+  range.setHorizontalAlignment('center');
+
+  // Đóng băng hàng header
+  sheet.setFrozenRows(1);
+}
+
+/**
+ * Tạo JSON response
+ */
+function buildJson(obj) {
+  return ContentService
+    .createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+
+// ── PHẦN MỞ RỘNG (tùy chọn) ──────────────────────────────────────────────
+
+/**
+ * Ghi vào sheet theo tháng (VD: "2026-06")
+ * Gọi getMonthlySheet(ss) thay vì getOrCreateSheet(ss, DATA_SHEET) trong doPost
+ */
+function getMonthlySheet(ss) {
+  const name  = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM');
+  const sheet = getOrCreateSheet(ss, name);
+  if (sheet.getLastRow() === 0) initHeader(sheet);
+  return sheet;
+}
+
+/**
+ * Gửi email báo cáo ngày
+ * Trigger: Apps Script → Triggers → sendDailyReport → Time-driven → Day timer
+ */
+function sendDailyReport() {
+  const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet = ss.getSheetByName(DATA_SHEET);
+  if (!sheet) return;
+
+  const today = new Date(); today.setHours(0,0,0,0);
+  const rows  = sheet.getDataRange().getValues().slice(1)
+    .filter(r => r[0] instanceof Date && r[0] >= today);
+
+  const email   = Session.getActiveUser().getEmail();
+  const dateStr = Utilities.formatDate(today, Session.getScriptTimeZone(), 'dd/MM/yyyy');
+  MailApp.sendEmail(
+    email,
+    `[QR Scanner] Báo cáo ngày ${dateStr}`,
+    `Tổng số bản ghi hôm nay: ${rows.length}\n\nXem Sheet: https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}`
+  );
+}
